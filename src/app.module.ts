@@ -1,9 +1,10 @@
-import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { Module } from "@nestjs/common";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
+import { MovieTorrentModule } from "./movie-torrent/movie-torrent.module";
 
 @Module({
-  imports: [],
+  imports: [MovieTorrentModule],
   controllers: [AppController],
   providers: [AppService],
 })
