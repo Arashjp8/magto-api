@@ -1,4 +1,5 @@
-import { BadRequestException, Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
+import { MovieQueryDto } from "./dto/movie-query.dto";
 import { MovieTorrentService } from "./movie-torrent.service";
 
 @Controller("movie-torrent")
@@ -6,13 +7,7 @@ export class MovieTorrentController {
   constructor(private readonly movieTorrentService: MovieTorrentService) {}
 
   @Get()
-  async findAll(@Query("movie_name") movieName: string) {
-    if (!movieName) {
-      throw new BadRequestException(
-        "The `movie_name` query parameter is required.",
-      );
-    }
-
-    return this.movieTorrentService.getMoveMagnateLinks(movieName);
+  async findAll(@Query() query: MovieQueryDto) {
+    return this.movieTorrentService.getMovieMagnateLinks(query.movie_name);
   }
 }

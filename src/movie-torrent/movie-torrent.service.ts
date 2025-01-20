@@ -7,12 +7,11 @@ export class MovieTorrentService {
     TorrentSearchApi.enableProvider("ThePirateBay");
   }
 
-  async getMoveMagnateLinks(movieName: string) {
+  async getMovieMagnateLinks(movieName: string) {
     //console.log(TorrentSearchApi.getActiveProviders());
 
     try {
       const torrents = await TorrentSearchApi.search(movieName, "Video", 20);
-      console.log(torrents);
       return { movieName, torrents };
     } catch (error) {
       console.error("Error fetching torrents:", error);
