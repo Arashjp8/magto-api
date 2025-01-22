@@ -5,6 +5,7 @@ import * as TorrentSearchApi from "torrent-search-api";
 export class MovieTorrentService {
   constructor() {
     TorrentSearchApi.enableProvider("ThePirateBay");
+    TorrentSearchApi.enableProvider("1337x");
   }
 
   async getMovieMagnateLinks(movieName: string) {
@@ -12,7 +13,14 @@ export class MovieTorrentService {
 
     try {
       const torrents = await TorrentSearchApi.search(movieName, "Video", 20);
-      return { movieName, torrents };
+
+      const torrentsCount = torrents.length;
+
+      return {
+        movieName,
+        torrents,
+        torrentsCount,
+      };
     } catch (error) {
       console.error("Error fetching torrents:", error);
       throw new Error("Failed to fetch torrents");
