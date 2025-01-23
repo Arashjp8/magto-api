@@ -13,13 +13,19 @@ export class VideoStreamService {
       return;
     }
 
-    res.setHeader("Content-Type", "vide/webm");
+    res.setHeader("Content-Type", "video/webm");
     res.setHeader("Accept-Ranges", "bytes");
 
     const ffmpegCommand = spawn("ffmpeg", [
+      // hardware acceleration
+      "-hwaccel",
+      "auto",
       // input file
       "-i",
       absolutePath,
+      // preset for lower resource usage
+      "-preset",
+      "ultrafast",
       // video codec
       "-c:v",
       "libx264",
