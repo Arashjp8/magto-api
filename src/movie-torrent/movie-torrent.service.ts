@@ -13,6 +13,10 @@ export class MovieTorrentService {
     try {
       const torrents = await TorrentSearchApi.search(movieName, "Video", 20);
 
+      if (torrents[0].title === "No results returned") {
+        return { message: "No Torrents were found." };
+      }
+
       const torrentsWithShortLinks = await Promise.all(
         torrents.map(async (torrent) => ({
           ...torrent,

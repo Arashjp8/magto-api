@@ -26,6 +26,22 @@ export class UrlShortenerService {
       return existingMapping.shortMagnet;
     }
 
+    const count = await this.magnetMappingsRepository.count();
+    if (count >= 100) {
+      for (let i = 0; i <= count - 100; i++) {
+        const oldestRecord = await this.magnetMappingsRepository
+          .createQueryBuilder()
+          .orderBy("created_at", "ASC")
+          .addOrderBy("id", "ASC")
+          .limit(1)
+          .getOne();
+
+        if (oldestRecord) {
+          await this.magnetMappingsRepository.remove(oldestRecord);
+        }
+      }
+    }
+
     const shortKey = this.generateShortKey(magnet);
 
     const newMapping = this.magnetMappingsRepository.create({

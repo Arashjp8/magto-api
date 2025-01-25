@@ -10,4 +10,7 @@ export class MagnetMappings {
 
   @Column({ type: "longtext" })
   fullMagnet: string;
+
+  @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
+  created_at: Date;
 }
