@@ -4,6 +4,7 @@ import { AppService } from "./app.service";
 import { MovieTorrentModule } from "./movie-torrent/movie-torrent.module";
 import { ConfigModule } from "@nestjs/config";
 import { DownloadAndStreamModule } from "./download-and-stream/download-and-stream.module";
+import { UrlShortenerModule } from "./url-shortener/url-shortener.module";
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DownloadAndStreamModule } from "./download-and-stream/download-and-stre
     }),
     MovieTorrentModule,
     DownloadAndStreamModule,
+    UrlShortenerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,18 +5,14 @@ import * as torrentStream from "torrent-stream";
 
 @Injectable()
 export class DownloadAndStreamService {
-  // TODO: change this later to get magnet link as an input
-  // TODO: start downloading
-  async downloadAndStream(res: Response) {
-    const engine = torrentStream(process.env.TEST_MAGNET2);
+  async downloadAndStream(magnet: string, res: Response) {
+    const engine = torrentStream(magnet);
 
-    const fileTypes = [".mp4", ".mkv", ".webm"];
+    const fileTypes = ["mp4", "mkv", "webm"];
 
     engine.on("ready", () => {
       const file = engine.files.find((file) =>
-        fileTypes.some((type) => {
-          return file.name.endsWith(type);
-        }),
+        fileTypes.some((type) => file.name.endsWith(`.${type}`)),
       );
 
       if (!file) {
@@ -25,12 +21,14 @@ export class DownloadAndStreamService {
         return;
       }
 
-      console.log("Streming file: ", file.name);
+      console.log("Streaming file:", file.name);
 
       const stream = file.createReadStream();
 
+      const fileType = fileTypes.find((type) => file.name.endsWith(`.${type}`));
+
       res.set({
-        "Content-Type": "video/mp4",
+        "Content-Type": `video/${fileType}`,
         "Transfer-Encoding": "chunked",
       });
 
@@ -68,27 +66,23 @@ export class DownloadAndStreamService {
       ffmpegCommand.stdout.pipe(res);
 
       ffmpegCommand.stderr.on("data", (data) => {
-        console.error("FFmpeg stderr: ", data.toString());
+        console.error("FFmpeg stderr:", data.toString());
       });
 
       res.on("close", () => {
         console.info("Client closed the connection.");
 
-        if (ffmpegCommand && !ffmpegCommand.killed) {
+        if (!ffmpegCommand.killed) {
           ffmpegCommand.kill("SIGINT");
           console.info("FFmpeg process killed.");
-        }
-
-        if (ffmpegCommand.killed) {
-          console.info("FFmpeg process killed successfully.");
         }
 
         engine.destroy(() => console.info("Torrent engine destroyed."));
       });
 
       ffmpegCommand.on("error", (err) => {
-        console.error("FFmpeg error: ", err);
-        res.status(500).send("Error streaming video");
+        console.error("FFmpeg error:", err);
+        res.status(500).send("Error streaming video.");
       });
 
       ffmpegCommand.on("close", (code) => {

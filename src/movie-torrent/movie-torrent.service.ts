@@ -1,9 +1,10 @@
 import { Injectable } from "@nestjs/common";
+import { UrlShortenerService } from "src/url-shortener/url-shortener.service";
 import * as TorrentSearchApi from "torrent-search-api";
 
 @Injectable()
 export class MovieTorrentService {
-  constructor() {
+  constructor(private readonly urlShortenerService: UrlShortenerService) {
     TorrentSearchApi.enableProvider("ThePirateBay");
     TorrentSearchApi.enableProvider("1337x");
   }
@@ -12,12 +13,15 @@ export class MovieTorrentService {
     try {
       const torrents = await TorrentSearchApi.search(movieName, "Video", 20);
 
-      const torrentsCount = torrents.length;
+      const torrentsWithShortLinks = torrents.map((torrent) => ({
+        ...torrent,
+        shortMagnet: this.urlShortenerService.generateShortKey(torrent.magnet),
+      }));
 
       return {
         movieName,
-        torrents,
-        torrentsCount,
+        torrents: torrentsWithShortLinks,
+        torrentsCount: torrents.length,
       };
     } catch (error) {
       console.error("Error fetching torrents:", error);
