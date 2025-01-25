@@ -1,11 +1,15 @@
 import { Injectable } from "@nestjs/common";
 import { createHash } from "crypto";
+import { InjectRepository } from "@nestjs/typeorm";
+import { MagnetMappings } from "./entities/magnet-mappings.entity";
+import { Repository } from "typeorm";
 
 @Injectable()
 export class UrlShortenerService {
-  private urlMap = new Map<string, string>();
-  private reverseMap = new Map<string, string>();
-  private baseUrl = "http://localhost:3000/short/";
+  constructor(
+    @InjectRepository(MagnetMappings)
+    private magnetMappingsRepository: Repository<MagnetMappings>,
+  ) {}
 
   generateShortKey(magnet: string): string {
     const hash = createHash("sha256").update(magnet).digest("hex");
@@ -13,31 +17,36 @@ export class UrlShortenerService {
     return hash.substring(0, 8);
   }
 
-  shortenUrl(magnet: string): string {
-    if (this.reverseMap.has(magnet)) {
-      return this.baseUrl + this.reverseMap.get(magnet);
+  async shortenUrl(magnet: string): Promise<string> {
+    const existingMapping = await this.magnetMappingsRepository.findOne({
+      where: { fullMagnet: magnet },
+    });
+
+    if (existingMapping) {
+      return existingMapping.shortMagnet;
     }
 
-    let shortKey = this.generateShortKey(magnet);
+    const shortKey = this.generateShortKey(magnet);
 
-    while (this.urlMap.has(shortKey)) {
-      shortKey = this.generateShortKey(magnet + Math.random().toString());
-    }
+    const newMapping = this.magnetMappingsRepository.create({
+      shortMagnet: shortKey,
+      fullMagnet: magnet,
+    });
+    await this.magnetMappingsRepository.save(newMapping);
 
-    this.urlMap.set(shortKey, magnet);
-    this.reverseMap.set(magnet, shortKey);
-
-    return this.baseUrl + shortKey;
+    return shortKey;
   }
 
-  resolveUrl(shortKey: string): string | null {
-    const fullMagnet = this.urlMap.get(shortKey);
-    if (!fullMagnet) {
+  async resolveUrl(shortKey: string): Promise<string | null> {
+    const mapping = await this.magnetMappingsRepository.findOne({
+      where: { shortMagnet: shortKey },
+    });
+
+    if (!mapping) {
       console.log(`Short magnet not found: ${shortKey}`);
       return null;
     }
-    console.log(`Resolved to full magnet: ${fullMagnet}`);
 
-    return fullMagnet;
+    return mapping.fullMagnet;
   }
 }

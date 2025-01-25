@@ -1,9 +1,10 @@
 import { Module } from "@nestjs/common";
 import { UrlShortenerService } from "./url-shortener.service";
-import { UrlShortenerController } from "./url-shortener.controller";
+import { MagnetMappings } from "./entities/magnet-mappings.entity";
+import { TypeOrmModule } from "@nestjs/typeorm";
 
 @Module({
-  controllers: [UrlShortenerController],
+  imports: [TypeOrmModule.forFeature([MagnetMappings])],
   providers: [UrlShortenerService],
 })
 export class UrlShortenerModule {}

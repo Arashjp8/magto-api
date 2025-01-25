@@ -29,7 +29,7 @@ export class DownloadAndStreamController {
     let fullMagnet = magnet;
 
     if (shortMagnet) {
-      fullMagnet = this.urlShortenerService.resolveUrl(shortMagnet);
+      fullMagnet = await this.urlShortenerService.resolveUrl(shortMagnet);
       if (!fullMagnet) {
         throw new BadRequestException("Invalid shortMagnet.");
       }

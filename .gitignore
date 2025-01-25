@@ -62,3 +62,5 @@ api-collection/
 api-collection/*
 downloads/
 downloads/*
+data/
+data/*

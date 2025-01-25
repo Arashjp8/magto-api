@@ -13,10 +13,14 @@ export class MovieTorrentService {
     try {
       const torrents = await TorrentSearchApi.search(movieName, "Video", 20);
 
-      const torrentsWithShortLinks = torrents.map((torrent) => ({
-        ...torrent,
-        shortMagnet: this.urlShortenerService.generateShortKey(torrent.magnet),
-      }));
+      const torrentsWithShortLinks = await Promise.all(
+        torrents.map(async (torrent) => ({
+          ...torrent,
+          shortMagnet: await this.urlShortenerService.shortenUrl(
+            torrent.magnet,
+          ),
+        })),
+      );
 
       return {
         movieName,
