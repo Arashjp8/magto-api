@@ -2,8 +2,8 @@ import { Module } from "@nestjs/common";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { MovieTorrentModule } from "./movie-torrent/movie-torrent.module";
-import { VideoStreamModule } from "./video-stream/video-stream.module";
 import { ConfigModule } from "@nestjs/config";
+import { DownloadAndStreamModule } from "./download-and-stream/download-and-stream.module";
 
 @Module({
   imports: [
@@ -12,7 +12,7 @@ import { ConfigModule } from "@nestjs/config";
       isGlobal: true,
     }),
     MovieTorrentModule,
-    VideoStreamModule,
+    DownloadAndStreamModule,
   ],
   controllers: [AppController],
   providers: [AppService],
