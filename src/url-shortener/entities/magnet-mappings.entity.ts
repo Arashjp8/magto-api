@@ -13,4 +13,7 @@ export class MagnetMappings {
 
   @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
   created_at: Date;
+
+  @Column({ type: "timestamp", nullable: true })
+  expires_at: Date;
 }
