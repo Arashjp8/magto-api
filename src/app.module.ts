@@ -7,6 +7,7 @@ import { DownloadAndStreamModule } from "./download-and-stream/download-and-stre
 import { UrlShortenerModule } from "./url-shortener/url-shortener.module";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { MagnetMappings } from "./url-shortener/entities/magnet-mappings.entity";
+import { ScheduleModule } from "@nestjs/schedule";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MagnetMappings } from "./url-shortener/entities/magnet-mappings.entity"
       envFilePath: ".env",
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     MovieTorrentModule,
     DownloadAndStreamModule,
     UrlShortenerModule,
