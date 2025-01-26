@@ -1,28 +1,55 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { createHash } from "crypto";
 import { LessThanOrEqual, Repository } from "typeorm";
 import { MagnetMappings } from "./entities/magnet-mappings.entity";
 import { Cron } from "@nestjs/schedule";
 
+const CRON_SCHEDULE = "0 0 * * *";
+const TTL_IN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 @Injectable()
 export class UrlShortenerService {
+  private logger = new Logger(UrlShortenerService.name);
+
   constructor(
     @InjectRepository(MagnetMappings)
     private magnetMappingsRepository: Repository<MagnetMappings>,
   ) {}
 
-  @Cron("0 0 * * *") // runs every day at midnight
-  private async dbCleanup(): Promise<void> {
-    await this.magnetMappingsRepository.delete({
-      expires_at: LessThanOrEqual(new Date()),
-    });
+  @Cron(CRON_SCHEDULE) // runs every day at midnight
+  private async _dbCleanup(): Promise<void> {
+    try {
+      const deleteResult = await this.magnetMappingsRepository.delete({
+        expires_at: LessThanOrEqual(new Date()),
+      });
+
+      if (deleteResult.affected) {
+        this.logger.log(
+          `Database cleanup completed: ${deleteResult.affected} records removed.`,
+        );
+      } else {
+        this.logger.log("Database cleanup completed: No records to delete.");
+      }
+    } catch (error) {
+      this.logger.error("Error during database cleanup.", error.stack);
+    }
   }
 
-  generateShortKey(magnet: string): string {
+  private generateShortKey(magnet: string): string {
     const hash = createHash("sha256").update(magnet).digest("hex");
-    // return first 8 characters of hash
-    return hash.substring(0, 8);
+    return hash.substring(0, 8); // return first 8 characters of hash
+  }
+
+  private createMapping(
+    shortMagnet: string,
+    fullMagnet: string,
+  ): MagnetMappings {
+    return this.magnetMappingsRepository.create({
+      shortMagnet,
+      fullMagnet,
+      expires_at: new Date(Date.now() + TTL_IN_MS),
+    });
   }
 
   async shortenUrl(magnet: string): Promise<string> {
@@ -34,31 +61,29 @@ export class UrlShortenerService {
       return existingMapping.shortMagnet;
     }
 
-    await this.dbCleanup();
-
     const shortKey = this.generateShortKey(magnet);
-    const ttl = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const newMapping = this.createMapping(shortKey, magnet);
 
-    const newMapping = this.magnetMappingsRepository.create({
-      shortMagnet: shortKey,
-      fullMagnet: magnet,
-      expires_at: new Date(Date.now() + ttl),
-    });
     await this.magnetMappingsRepository.save(newMapping);
 
     return shortKey;
   }
 
   async resolveUrl(shortKey: string): Promise<string | null> {
-    const mapping = await this.magnetMappingsRepository.findOne({
-      where: { shortMagnet: shortKey },
-    });
+    try {
+      const mapping = await this.magnetMappingsRepository.findOne({
+        where: { shortMagnet: shortKey },
+      });
 
-    if (!mapping) {
-      console.log(`Short magnet not found: ${shortKey}`);
-      return null;
+      if (!mapping) {
+        console.log(`Short magnet not found: ${shortKey}`);
+        return null;
+      }
+
+      return mapping.fullMagnet;
+    } catch (error) {
+      this.logger.error(`Error resolving shortKey ${shortKey}:`, error.stack);
+      throw new Error("Unable to resolve URL");
     }
-
-    return mapping.fullMagnet;
   }
 }
