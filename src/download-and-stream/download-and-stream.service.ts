@@ -49,9 +49,12 @@ export class DownloadAndStreamService {
         resolve(file || null);
       });
 
-      // TODO: change type
-      engine.on("error", (error: any) => {
-        this.logger.error("Torrent engine error:", error);
+      engine.on("error", (error: unknown) => {
+        if (error instanceof Error) {
+          this.logger.error("Torrent engine error:", error);
+        } else {
+          this.logger.error("Torrent engine error:", JSON.stringify(error));
+        }
         resolve(null);
       });
     });
