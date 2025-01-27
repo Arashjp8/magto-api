@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { Response } from "express";
 import * as torrentStream from "torrent-stream";
@@ -110,7 +115,7 @@ export class DownloadAndStreamService {
 
     ffmpegCommand.on("error", (err) => {
       this.logger.error("FFmpeg error:", err);
-      res.status(500).send("Error streaming video.");
+      throw new InternalServerErrorException("Error streaming video.");
     });
 
     ffmpegCommand.on("close", (code) => {
@@ -140,8 +145,7 @@ export class DownloadAndStreamService {
 
       if (!file) {
         this.logger.error("No playable file found in torrent.");
-        res.status(404).send("No playable file found in torrent.");
-        return;
+        throw new NotFoundException("No playable file found in torrent.");
       }
 
       this.logger.log(`Streaming file: ${file.name}`);
@@ -158,7 +162,7 @@ export class DownloadAndStreamService {
       });
     } catch (error) {
       this.logger.error("Error downloading or streaming:", error);
-      res.status(500).send("Internal Server Error");
+      throw new InternalServerErrorException("Internal Server Error");
     }
   }
 }
