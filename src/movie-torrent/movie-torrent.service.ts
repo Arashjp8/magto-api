@@ -2,11 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { UrlShortenerService } from "src/url-shortener/url-shortener.service";
 import * as TorrentSearchApi from "torrent-search-api";
 
-const PROVIDERS = ["ThePirateBay", "1337x"];
-
 export interface ModifiedTorrents extends TorrentSearchApi.Torrent {
   shortMagnet: string;
 }
+
+const PROVIDERS = ["ThePirateBay", "1337x"];
 
 @Injectable()
 export class MovieTorrentService {

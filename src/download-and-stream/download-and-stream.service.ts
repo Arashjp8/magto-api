@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { spawn } from "child_process";
+import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { Response } from "express";
 import * as torrentStream from "torrent-stream";
 
@@ -60,11 +60,30 @@ export class DownloadAndStreamService {
     });
   }
 
+  private prepareStream(
+    file: TorrentStream.TorrentFile,
+  ): Promise<NodeJS.ReadableStream> {
+    return new Promise((resolve, reject) => {
+      const stream = file.createReadStream();
+
+      stream.on("error", (err: NodeJS.ErrnoException) => {
+        this.logger.error("Stream error:", err);
+        reject(err);
+      });
+
+      stream.on("end", () => {
+        this.logger.log("Stream ended.");
+      });
+
+      resolve(stream);
+    });
+  }
+
   private streamWithFFmpeg(
     stream: NodeJS.ReadableStream,
     fileName: string,
     res: Response,
-  ) {
+  ): ChildProcessWithoutNullStreams {
     const fileType =
       FILE_TYPES.find((type) => fileName.endsWith(`.${type}`)) || "mp4";
 
@@ -78,9 +97,16 @@ export class DownloadAndStreamService {
     stream.pipe(ffmpegCommand.stdin);
     ffmpegCommand.stdout.pipe(res);
 
-    ffmpegCommand.stderr.on("data", (data) => {
-      this.logger.verbose("FFmpeg stderr:", data.toString());
-    });
+    const onStderrData = (data: Buffer) => {
+      const message = data.toString();
+      if (message.toLowerCase().includes("error")) {
+        this.logger.error("FFmpeg stderr (error):", message);
+      } else {
+        this.logger.debug("FFmpeg stderr:", message);
+      }
+    };
+
+    ffmpegCommand.stderr.on("data", onStderrData);
 
     ffmpegCommand.on("error", (err) => {
       this.logger.error("FFmpeg error:", err);
@@ -94,10 +120,12 @@ export class DownloadAndStreamService {
         this.logger.error(`FFmpeg process exited with code ${code}`);
       }
     });
+
+    return ffmpegCommand;
   }
 
-  private cleanup(engine: TorrentStream.TorrentEngine) {
-    this.logger.log("Client closed the connection.");
+  private cleanupEngine(engine: TorrentStream.TorrentEngine) {
+    this.logger.log("Cleaning up torrent engine.");
 
     engine.destroy(() => {
       this.logger.log("Torrent engine destroyed.");
@@ -117,10 +145,17 @@ export class DownloadAndStreamService {
       }
 
       this.logger.log(`Streaming file: ${file.name}`);
-      const stream = file.createReadStream();
-      this.streamWithFFmpeg(stream, file.name, res);
 
-      res.on("close", () => this.cleanup(engine));
+      const stream = await this.prepareStream(file);
+
+      const ffmpegCommand = this.streamWithFFmpeg(stream, file.name, res);
+
+      res.on("close", () => {
+        this.logger.log("FFmpeg command killed.");
+        ffmpegCommand.stdin.end();
+        ffmpegCommand.kill("SIGINT");
+        this.cleanupEngine(engine);
+      });
     } catch (error) {
       this.logger.error("Error downloading or streaming:", error);
       res.status(500).send("Internal Server Error");
