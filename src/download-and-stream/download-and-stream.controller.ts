@@ -2,12 +2,13 @@ import {
   BadRequestException,
   Controller,
   Get,
+  InternalServerErrorException,
   Query,
   Res,
 } from "@nestjs/common";
-import { DownloadAndStreamService } from "./download-and-stream.service";
 import { Response } from "express";
 import { UrlShortenerService } from "src/url-shortener/url-shortener.service";
+import { DownloadAndStreamService } from "./download-and-stream.service";
 
 @Controller("download-and-stream")
 export class DownloadAndStreamController {
@@ -39,7 +40,7 @@ export class DownloadAndStreamController {
       await this.downloadAndStreamService.downloadAndStream(fullMagnet, res);
     } catch (error) {
       console.error("Error in download and stream:", error);
-      res.status(500).send("Internal Server Error");
+      throw new InternalServerErrorException("Internal Server Error");
     }
   }
 }
