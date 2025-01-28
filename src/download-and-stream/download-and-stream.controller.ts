@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   InternalServerErrorException,
+  Logger,
   Query,
   Res,
 } from "@nestjs/common";
@@ -12,6 +13,8 @@ import { DownloadAndStreamService } from "./download-and-stream.service";
 
 @Controller("download-and-stream")
 export class DownloadAndStreamController {
+  private readonly logger = new Logger(DownloadAndStreamController.name);
+
   constructor(
     private readonly downloadAndStreamService: DownloadAndStreamService,
     private readonly urlShortenerService: UrlShortenerService,
@@ -23,6 +26,11 @@ export class DownloadAndStreamController {
     @Query("shortMagnet") shortMagnet: string,
     @Res() res: Response,
   ) {
+    this.logger.log(`Received GET request to '/download-and-stream'`, {
+      magnet,
+      shortMagnet,
+    });
+
     if (!magnet && !shortMagnet) {
       throw new BadRequestException("Magnet link or shortMagnet is required.");
     }
