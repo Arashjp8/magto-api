@@ -6,8 +6,8 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { MagnetMappings } from "src/url-shortener/entities/magnet-mappings.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MagnetMappings])],
-  controllers: [DownloadAndStreamController],
-  providers: [DownloadAndStreamService, UrlShortenerService],
+    imports: [TypeOrmModule.forFeature([MagnetMappings])],
+    controllers: [DownloadAndStreamController],
+    providers: [DownloadAndStreamService, UrlShortenerService],
 })
 export class DownloadAndStreamModule {}

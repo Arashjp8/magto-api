@@ -4,7 +4,7 @@ import { MagnetMappings } from "./entities/magnet-mappings.entity";
 import { TypeOrmModule } from "@nestjs/typeorm";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([MagnetMappings])],
-  providers: [UrlShortenerService],
+    imports: [TypeOrmModule.forFeature([MagnetMappings])],
+    providers: [UrlShortenerService],
 })
 export class UrlShortenerModule {}

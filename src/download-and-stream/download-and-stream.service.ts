@@ -1,168 +1,123 @@
 import {
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException,
+    HttpException,
+    Injectable,
+    InternalServerErrorException,
+    Logger,
+    NotFoundException,
 } from "@nestjs/common";
-import { ChildProcessWithoutNullStreams, spawn } from "child_process";
-import { Response } from "express";
+import { Request, Response } from "express";
 import * as torrentStream from "torrent-stream";
+import * as mime from "mime-types";
 
 const FILE_TYPES = ["mp4", "mkv", "webm"];
-const FFMPEG_OPTIONS = [
-  // hardware acceleration
-  "-hwaccel",
-  "auto",
-  // input file
-  "-i",
-  // pipe the input to stdin
-  "pipe:0",
-  // preset for lower resource usage
-  "-preset",
-  "ultrafast",
-  // real-time streaming
-  "-tune",
-  "zerolatency",
-  // video codec
-  "-c:v",
-  "libx264",
-  // audio codec
-  "-c:a",
-  "aac",
-  // Optimize for streaming
-  "-movflags",
-  "frag_keyframe+empty_moov",
-  // output format
-  "-f",
-  "mp4",
-  // pipe the output to stdout
-  "pipe:1",
-];
 
 @Injectable()
 export class DownloadAndStreamService {
-  private logger = new Logger(DownloadAndStreamService.name);
+    private logger = new Logger(DownloadAndStreamService.name);
 
-  private async findPlayableFile(
-    engine: TorrentStream.TorrentEngine,
-  ): Promise<TorrentStream.TorrentFile | null> {
-    return new Promise((resolve) => {
-      engine.on("ready", () => {
-        const file = engine.files.find((file) =>
-          FILE_TYPES.some((type) => file.name.endsWith(`.${type}`)),
-        );
-        resolve(file || null);
-      });
+    private async findPlayableFile(
+        engine: TorrentStream.TorrentEngine,
+    ): Promise<TorrentStream.TorrentFile | null> {
+        return new Promise((resolve) => {
+            engine.on("ready", () => {
+                const file = engine.files.find((file) =>
+                    FILE_TYPES.some((type) => file.name.endsWith(`.${type}`)),
+                );
+                resolve(file || null);
+            });
 
-      engine.on("error", (error: unknown) => {
-        if (error instanceof Error) {
-          this.logger.error("Torrent engine error:", error);
-        } else {
-          this.logger.error("Torrent engine error:", JSON.stringify(error));
-        }
-        resolve(null);
-      });
-    });
-  }
-
-  private prepareStream(
-    file: TorrentStream.TorrentFile,
-  ): Promise<NodeJS.ReadableStream> {
-    return new Promise((resolve, reject) => {
-      const stream = file.createReadStream();
-
-      stream.on("error", (err: NodeJS.ErrnoException) => {
-        this.logger.error("Stream error:", err);
-        reject(err);
-      });
-
-      stream.on("end", () => {
-        this.logger.log("Stream ended.");
-      });
-
-      resolve(stream);
-    });
-  }
-
-  private streamWithFFmpeg(
-    stream: NodeJS.ReadableStream,
-    fileName: string,
-    res: Response,
-  ): ChildProcessWithoutNullStreams {
-    const fileType =
-      FILE_TYPES.find((type) => fileName.endsWith(`.${type}`)) || "mp4";
-
-    res.set({
-      "Content-Type": `video/${fileType}`,
-      "Transfer-Encoding": "chunked",
-    });
-
-    const ffmpegCommand = spawn("ffmpeg", FFMPEG_OPTIONS);
-
-    stream.pipe(ffmpegCommand.stdin);
-    ffmpegCommand.stdout.pipe(res);
-
-    const onStderrData = (data: Buffer) => {
-      const message = data.toString();
-      if (message.toLowerCase().includes("error")) {
-        this.logger.error("FFmpeg stderr (error):", message);
-      } else {
-        this.logger.debug("FFmpeg stderr:", message);
-      }
-    };
-
-    ffmpegCommand.stderr.on("data", onStderrData);
-
-    ffmpegCommand.on("error", (err) => {
-      this.logger.error("FFmpeg error:", err);
-      throw new InternalServerErrorException("Error streaming video.");
-    });
-
-    ffmpegCommand.on("close", (code) => {
-      if (code === 0) {
-        this.logger.log("Streaming finished successfully.");
-      } else {
-        this.logger.error(`FFmpeg process exited with code ${code}`);
-      }
-    });
-
-    return ffmpegCommand;
-  }
-
-  private cleanupEngine(engine: TorrentStream.TorrentEngine) {
-    this.logger.log("Cleaning up torrent engine.");
-
-    engine.destroy(() => {
-      this.logger.log("Torrent engine destroyed.");
-    });
-  }
-
-  async downloadAndStream(magnet: string, res: Response) {
-    try {
-      const engine = torrentStream(magnet);
-
-      const file = await this.findPlayableFile(engine);
-
-      if (!file) {
-        this.logger.error("No playable file found in torrent.");
-        throw new NotFoundException("No playable file found in torrent.");
-      }
-
-      this.logger.log(`Streaming file: ${file.name}`);
-
-      const stream = await this.prepareStream(file);
-
-      const ffmpegCommand = this.streamWithFFmpeg(stream, file.name, res);
-
-      res.on("close", () => {
-        this.logger.log("FFmpeg command killed.");
-        ffmpegCommand.stdin.end();
-        ffmpegCommand.kill("SIGINT");
-        this.cleanupEngine(engine);
-      });
-    } catch (error) {
-      this.logger.error("Error downloading or streaming:", error);
-      throw new InternalServerErrorException("Internal Server Error");
+            engine.on("error", (error: unknown) => {
+                if (error instanceof Error) {
+                    this.logger.error("Torrent engine error:", error);
+                } else {
+                    this.logger.error(
+                        "Torrent engine error:",
+                        JSON.stringify(error),
+                    );
+                }
+                resolve(null);
+            });
+        });
     }
-  }
+
+    private getMimeType(fileName: string): string {
+        const ext = fileName.split(".").pop();
+        if (ext) {
+            const mimeType = mime.lookup(ext);
+            if (mimeType) {
+                return mimeType;
+            }
+        }
+        return "application/octet-stream";
+    }
+
+    async downloadAndStream(magnet: string, res: Response, req: Request) {
+        try {
+            const engine = torrentStream(magnet);
+
+            const file = await this.findPlayableFile(engine);
+            if (!file) {
+                this.logger.error("No playable file found in torrent.");
+                throw new NotFoundException(
+                    "No playable file found in torrent.",
+                );
+            }
+
+            this.logger.log("Serving file:", file.name);
+            const fileSize = file.length;
+            this.logger.log("fileSize:", fileSize);
+            const rangeHeader = req.headers.range;
+            this.logger.log("RangeHeader:", rangeHeader);
+
+            const contentType = this.getMimeType(file.name);
+
+            if (rangeHeader) {
+                const [startStr, endStr] = rangeHeader
+                    .replace(/bytes=/, "")
+                    .split("-");
+                this.logger.log("startStr", startStr);
+                this.logger.log("endStr", endStr);
+
+                const start = parseInt(startStr, 10);
+                this.logger.log("start:", start);
+                const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+                this.logger.log("end:", end);
+
+                if (start >= fileSize || end >= fileSize) {
+                    this.logger.error(
+                        `Invalid range: ${start}-${end} (File size: ${fileSize})`,
+                    );
+                    throw new HttpException(
+                        "Requested range not satisfiable",
+                        416,
+                    );
+                }
+
+                const contentRange = `bytes ${start}-${end}/${fileSize}`;
+                this.logger.log("contentRange:", contentRange);
+
+                res.set({
+                    "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                    "Content-Length": end - start + 1,
+                    "Accept-Ranges": "bytes",
+                    "Content-Type": contentType,
+                });
+
+                const stream = file.createReadStream({ start, end });
+                stream.pipe(res);
+            } else {
+                res.set({
+                    "Content-Length": fileSize,
+                    "Accept-Ranges": "bytes",
+                    "Content-Type": contentType,
+                });
+
+                const stream = file.createReadStream();
+                stream.pipe(res);
+            }
+        } catch (error) {
+            this.logger.error("Error downloading or streaming:", error);
+            throw new InternalServerErrorException("Internal Server Error");
+        }
+    }
 }
