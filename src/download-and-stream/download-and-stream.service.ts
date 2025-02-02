@@ -1,13 +1,12 @@
 import {
-    HttpException,
     Injectable,
     InternalServerErrorException,
     Logger,
     NotFoundException,
 } from "@nestjs/common";
+import { spawn } from "child_process";
 import { Request, Response } from "express";
 import * as torrentStream from "torrent-stream";
-import * as mime from "mime-types";
 
 const FILE_TYPES = ["mp4", "mkv", "webm"];
 
@@ -40,15 +39,29 @@ export class DownloadAndStreamService {
         });
     }
 
-    private getMimeType(fileName: string): string {
-        const ext = fileName.split(".").pop();
-        if (ext) {
-            const mimeType = mime.lookup(ext);
-            if (mimeType) {
-                return mimeType;
-            }
-        }
-        return "application/octet-stream";
+    async prepareStream(
+        file: TorrentStream.TorrentFile,
+    ): Promise<NodeJS.ReadableStream> {
+        return new Promise((resolve, reject) => {
+            const stream: NodeJS.ReadableStream = file.createReadStream();
+
+            // Check stream for errors
+            stream.on("error", (err: NodeJS.ErrnoException) => {
+                this.logger.error("Stream error:", err);
+                reject(err);
+            });
+
+            stream.on("end", () => {
+                this.logger.log("Stream ended.");
+            });
+
+            stream.on("data", (chunk) => {
+                // You can add more logging here to inspect stream data if needed
+                this.logger.log("Stream data chunk received:", chunk.length);
+            });
+
+            resolve(stream);
+        });
     }
 
     async downloadAndStream(magnet: string, res: Response, req: Request) {
@@ -63,61 +76,59 @@ export class DownloadAndStreamService {
                 );
             }
 
-            this.logger.log("Serving file:", file.name);
+            this.logger.log("LENGTH:", file.length);
+            this.logger.log("PATH:", file.path);
+            this.logger.log("NAME:", file.name);
+
             const fileSize = file.length;
-            this.logger.log("fileSize:", fileSize);
-            const rangeHeader = req.headers.range;
-            this.logger.log("RangeHeader:", rangeHeader);
+            const range = req.headers.range;
 
-            const contentType = this.getMimeType(file.name);
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            const contentLength = end - start + 1;
 
-            if (rangeHeader) {
-                const [startStr, endStr] = rangeHeader
-                    .replace(/bytes=/, "")
-                    .split("-");
-                this.logger.log("startStr", startStr);
-                this.logger.log("endStr", endStr);
+            this.logger.log("Start:", start, "End:", end);
 
-                const start = parseInt(startStr, 10);
-                this.logger.log("start:", start);
-                const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
-                this.logger.log("end:", end);
+            const stream = await this.prepareStream(file);
+            const ffmpeg = spawn("ffmpeg", [
+                "-i",
+                "pipe:0",
+                "-preset",
+                "ultrafast",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "frag_keyframe+empty_moov",
+                "-f",
+                "mp4",
+                "pipe:1",
+            ]);
 
-                if (start >= fileSize || end >= fileSize) {
-                    this.logger.error(
-                        `Invalid range: ${start}-${end} (File size: ${fileSize})`,
-                    );
-                    throw new HttpException(
-                        "Requested range not satisfiable",
-                        416,
-                    );
-                }
+            stream.pipe(ffmpeg.stdin);
 
-                const contentRange = `bytes ${start}-${end}/${fileSize}`;
-                this.logger.log("contentRange:", contentRange);
+            ffmpeg.stderr.on("data", (data) => {
+                this.logger.debug("FFmpeg stderr:", data);
+            });
 
-                res.set({
-                    "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-                    "Content-Length": end - start + 1,
-                    "Accept-Ranges": "bytes",
-                    "Content-Type": contentType,
-                });
+            res.writeHead(206, {
+                "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                "Accept-Ranges": "bytes",
+                "Content-Length": contentLength,
+                "Content-Type": "video/mp4",
+            });
 
-                const stream = file.createReadStream({ start, end });
-                stream.pipe(res);
-            } else {
-                res.set({
-                    "Content-Length": fileSize,
-                    "Accept-Ranges": "bytes",
-                    "Content-Type": contentType,
-                });
+            ffmpeg.stdout.pipe(res, { end: false });
 
-                const stream = file.createReadStream();
-                stream.pipe(res);
-            }
+            ffmpeg.on("error", (err) => {
+                this.logger.error("FFmpeg error:", err);
+                res.status(500).send("Error processing video.");
+            });
         } catch (error) {
-            this.logger.error("Error downloading or streaming:", error);
-            throw new InternalServerErrorException("Internal Server Error");
+            this.logger.error("Download and stream error:", error);
+            throw new InternalServerErrorException("Error streaming video.");
         }
     }
 }
