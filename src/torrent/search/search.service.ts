@@ -44,14 +44,10 @@ export class SearchService {
                 throw error;
             }
 
-            this.logger.error(
-                "Error fetching torrents for movie:",
-                movieName,
-                error,
-            );
+            this.logger.error(SEARCH_CONSTS.ERRORS.FETCHING, movieName, error);
 
             throw new InternalServerErrorException(
-                `Failed to fetch torrents for "${movieName}".`,
+                `${SEARCH_CONSTS.ERRORS.FETCHING}${movieName}`,
             );
         }
     }
