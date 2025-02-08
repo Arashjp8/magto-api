@@ -4,10 +4,33 @@ import { AppService } from "./app.service.js";
 import { SearchModule } from "./torrent/search/search.module.js";
 import { StreamEngineService } from "./torrent/stream-engine/stream-engine.service.js";
 import { StreamingModule } from "./streaming/streaming.module.js";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { ConfigModule } from "@nestjs/config";
 
 @Module({
+    imports: [
+        TypeOrmModule.forRoot({
+            type: "mariadb",
+            host: "localhost",
+            port: 3306,
+            username: "root",
+            password: "",
+            database: "test",
+            entities: [], // change this if you had an entity
+            // TODO:
+            // WARNING: change to false in production
+            synchronize: true,
+            retryAttempts: 3,
+            retryDelay: 3000,
+        }),
+        ConfigModule.forRoot({
+            envFilePath: ".env",
+            isGlobal: true,
+        }),
+        SearchModule,
+        StreamingModule,
+    ],
     controllers: [AppController],
     providers: [AppService, StreamEngineService],
-    imports: [SearchModule, StreamingModule],
 })
 export class AppModule {}
