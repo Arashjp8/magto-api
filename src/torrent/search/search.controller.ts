@@ -1,17 +1,18 @@
-import { Controller, Get, Param } from "@nestjs/common";
+import { Controller, Get, Logger, Query } from "@nestjs/common";
 import { SearchService } from "./search.service.js";
+import { SearchQueryDto } from "./dto/search-query.dto.js";
 
 @Controller("search")
 export class SearchController {
-    constructor(private readonly searchService: SearchService) { }
+    private logger = new Logger(SearchController.name);
+
+    constructor(private readonly searchService: SearchService) {}
 
     @Get()
-    findAll() {
-        return this.searchService.findAll();
-    }
-
-    @Get(":id")
-    findOne(@Param("id") id: string) {
-        return this.searchService.findOne(+id);
+    async findAll(@Query() query: SearchQueryDto) {
+        this.logger.log(
+            `Received GET request to '/api/movie-torrent' with query: ${JSON.stringify(query)}`,
+        );
+        return await this.searchService.findAll(query.movie_name);
     }
 }
