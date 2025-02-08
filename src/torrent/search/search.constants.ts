@@ -5,4 +5,4 @@ export const SEARCH_CONSTS = {
         NOT_FOUND: "No Torrents were found.",
         FETCHING: "Error fetching torrents for movie:",
     } as const,
-};
+} as const;

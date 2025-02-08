@@ -9,7 +9,7 @@ import { SEARCH_CONSTS } from "./search.constants.js";
 
 @Injectable()
 export class SearchService {
-    private logger = new Logger(SearchService.name);
+    private readonly logger = new Logger(SearchService.name);
 
     constructor() {
         this.initializeProviders();

@@ -4,7 +4,7 @@ import { SearchQueryDto } from "./dto/search-query.dto.js";
 
 @Controller("search")
 export class SearchController {
-    private logger = new Logger(SearchController.name);
+    private readonly logger = new Logger(SearchController.name);
 
     constructor(private readonly searchService: SearchService) {}
 

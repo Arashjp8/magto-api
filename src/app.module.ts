@@ -1,11 +1,10 @@
 import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { TypeOrmModule } from "@nestjs/typeorm";
 import { AppController } from "./app.controller.js";
 import { AppService } from "./app.service.js";
-import { SearchModule } from "./torrent/search/search.module.js";
-import { StreamEngineService } from "./torrent/stream-engine/stream-engine.service.js";
 import { StreamingModule } from "./streaming/streaming.module.js";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import { ConfigModule } from "@nestjs/config";
+import { SearchModule } from "./torrent/search/search.module.js";
 
 @Module({
     imports: [
@@ -31,6 +30,6 @@ import { ConfigModule } from "@nestjs/config";
         StreamingModule,
     ],
     controllers: [AppController],
-    providers: [AppService, StreamEngineService],
+    providers: [AppService],
 })
 export class AppModule {}

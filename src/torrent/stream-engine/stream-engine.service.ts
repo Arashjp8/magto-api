@@ -5,7 +5,7 @@ import { ENGINE_CONSTS } from "./stream-engine.constant.js";
 
 @Injectable()
 export class StreamEngineService implements IStreamEngine {
-    private logger = new Logger(StreamEngineService.name);
+    private readonly logger = new Logger(StreamEngineService.name);
 
     constructor(private readonly engineClient: WebTorrent.Instance) {}
 
