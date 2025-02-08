@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+    Injectable,
+    InternalServerErrorException,
+    Logger,
+    NotFoundException,
+} from "@nestjs/common";
 import TorrentSearchApi from "torrent-search-api";
 import { SEARCH_CONSTS } from "./search.constants.js";
 
@@ -25,7 +30,7 @@ export class SearchService {
             );
 
             if (!torrents || torrents[0].title === "No results returned") {
-                return { message: "No Torrents were found." };
+                throw new NotFoundException(SEARCH_CONSTS.ERRORS.NOT_FOUND);
             }
 
             return {
@@ -34,12 +39,20 @@ export class SearchService {
                 torrentsCount: torrents.length,
             };
         } catch (error) {
+            if (error instanceof NotFoundException) {
+                this.logger.warn(`No torrents found for movie: ${movieName}`);
+                throw error;
+            }
+
             this.logger.error(
                 "Error fetching torrents for movie:",
                 movieName,
                 error,
             );
-            throw new Error(`Failed to fetch torrents for "${movieName}".`);
+
+            throw new InternalServerErrorException(
+                `Failed to fetch torrents for "${movieName}".`,
+            );
         }
     }
 }
