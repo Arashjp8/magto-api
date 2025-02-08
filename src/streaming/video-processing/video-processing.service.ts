@@ -9,7 +9,7 @@ import { VIDEOPROC_CONSTS } from "./video-processing.constants.js";
 export class VideoProcessingService implements IVideoProcessing {
     private readonly logger = new Logger(VideoProcessingService.name);
 
-    getMetadata(inputStream: Readable): Promise<FFprobeData> {
+    getMetadata(inputStream: NodeJS.ReadableStream): Promise<FFprobeData> {
         return new Promise((resolve, reject) => {
             const ffprobeCmd = spawn("ffprobe", [
                 ...VIDEOPROC_CONSTS.FFPROBE.DEFAULT_ARGS,
@@ -71,7 +71,7 @@ export class VideoProcessingService implements IVideoProcessing {
     }
 
     async buildConversionArgs(
-        inputStream: Readable,
+        inputStream: NodeJS.ReadableStream,
         start: number,
         end: number,
     ): Promise<string[]> {
@@ -158,7 +158,7 @@ export class VideoProcessingService implements IVideoProcessing {
     // change it if needed
 
     async convertVideo(
-        inputStream: Readable,
+        inputStream: NodeJS.ReadableStream,
         startTimeMs: number,
         endTimeMs: number,
     ): Promise<Readable> {

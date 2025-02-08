@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { IStreamEngine } from "./stream-engine.interface.js";
 import WebTorrent from "webtorrent";
 import { ENGINE_CONSTS } from "./stream-engine.constant.js";
@@ -7,7 +7,10 @@ import { ENGINE_CONSTS } from "./stream-engine.constant.js";
 export class StreamEngineService implements IStreamEngine {
     private readonly logger = new Logger(StreamEngineService.name);
 
-    constructor(private readonly engineClient: WebTorrent.Instance) {}
+    constructor(
+        @Inject("WEBTORRENT_INSTANCE")
+        private readonly engineClient: WebTorrent.Instance,
+    ) {}
 
     findPlayableFile(magnet: string): Promise<WebTorrent.TorrentFile> {
         return new Promise((resolve, reject) => {

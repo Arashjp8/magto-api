@@ -11,7 +11,7 @@ export interface IVideoProcessing {
      * @param inputStream - The video stream to analyze.
      * @returns A promise that resolves with the parsed FFprobeData metadata.
      */
-    getMetadata(inputStream: Readable): Promise<FFprobeData>;
+    getMetadata(inputStream: NodeJS.ReadableStream): Promise<FFprobeData>;
 
     /**
      * Builds an array of FFmpeg arguments based on the file's metadata.
@@ -22,7 +22,7 @@ export interface IVideoProcessing {
      * @returns A promise that resolves with an array of FFmpeg arguments.
      */
     buildConversionArgs(
-        inputStream: Readable,
+        inputStream: NodeJS.ReadableStream,
         start: number,
         end: number,
     ): Promise<string[]>;
@@ -36,7 +36,7 @@ export interface IVideoProcessing {
      * @returns A promise that resolves with the processed (converted) video stream.
      */
     convertVideo(
-        inputStream: Readable,
+        inputStream: NodeJS.ReadableStream,
         startTimeMs: number,
         endTimeMs: number,
     ): Promise<Readable>;
