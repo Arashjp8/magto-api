@@ -1,31 +1,46 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { IVideoProcessing } from "./video-processing.interface.js";
-import { FFprobeData } from "./ffprobe.interface.js";
-import { Readable } from "stream";
 import { spawn } from "child_process";
+import { createWriteStream, promises as fsPromises } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { FFprobeData } from "./ffprobe.interface.js";
 import { VIDEOPROC_CONSTS } from "./video-processing.constants.js";
+import { IVideoProcessing } from "./video-processing.interface.js";
+import { PassThrough } from "stream";
 
 @Injectable()
 export class VideoProcessingService implements IVideoProcessing {
     private readonly logger = new Logger(VideoProcessingService.name);
 
-    getMetadata(inputStream: NodeJS.ReadableStream): Promise<FFprobeData> {
+    private async getMetadataFromFile(
+        videoFilePath: string,
+    ): Promise<FFprobeData> {
+        this.logger.debug("Running ffprobe on temporary file:", videoFilePath);
         return new Promise((resolve, reject) => {
             const ffprobeCmd = spawn("ffprobe", [
                 ...VIDEOPROC_CONSTS.FFPROBE.DEFAULT_ARGS,
-                "pipe:0",
+                videoFilePath,
             ]);
 
-            let metadataOuput = "";
+            let metadataOutput = "";
             ffprobeCmd.stdout.on("data", (data) => {
-                metadataOuput += data.toString();
+                metadataOutput += data.toString();
+                this.logger.debug("ffprobe stdout data:", data.toString());
             });
 
-            ffprobeCmd.on("close", (code: number) => {
+            ffprobeCmd.stderr.on("data", (data) => {
+                this.logger.error(
+                    VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_STDERR,
+                    data.toString(),
+                );
+                reject(new Error(`ffprobe error: ${data.toString()}`));
+            });
+
+            ffprobeCmd.on("close", async (code: number) => {
                 if (code === 0) {
                     try {
                         const metadata = JSON.parse(
-                            metadataOuput,
+                            metadataOutput,
                         ) as FFprobeData;
                         this.logger.log(
                             VIDEOPROC_CONSTS.FFPROBE.LOGS
@@ -45,33 +60,39 @@ export class VideoProcessingService implements IVideoProcessing {
                         );
                     }
                 } else {
-                    this.logger.error(
-                        VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_EXIT_ERROR(code),
-                    );
-                    reject(
-                        new Error(
-                            VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_EXIT_ERROR(
-                                code,
-                            ),
-                        ),
-                    );
+                    const errorMsg =
+                        VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_EXIT_ERROR(code);
+                    this.logger.error(errorMsg);
+                    reject(new Error(errorMsg));
                 }
             });
-
-            ffprobeCmd.stderr.on("data", (data) => {
-                this.logger.error(
-                    VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_STDERR,
-                    data.toString(),
-                );
-                reject(new Error(`ffprobe error: ${data.toString()}`));
-            });
-
-            inputStream.pipe(ffprobeCmd.stdin);
         });
     }
 
-    async buildConversionArgs(
+    public async getMetadata(
         inputStream: NodeJS.ReadableStream,
+    ): Promise<FFprobeData> {
+        const tempVideoPath = join(
+            tmpdir(),
+            `video-${Date.now()}-${Math.random()}.tmp`,
+        );
+        this.logger.debug(
+            "Writing input stream for metadata extraction to",
+            tempVideoPath,
+        );
+        await new Promise<void>((resolve, reject) => {
+            const writeStream = createWriteStream(tempVideoPath);
+            inputStream.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+        });
+        const metadata = await this.getMetadataFromFile(tempVideoPath);
+        await fsPromises.unlink(tempVideoPath);
+        return metadata;
+    }
+
+    async buildConversionArgs(
+        videoFilePath: string,
         start: number,
         end: number,
     ): Promise<string[]> {
@@ -80,7 +101,7 @@ export class VideoProcessingService implements IVideoProcessing {
         );
 
         try {
-            const metadata = await this.getMetadata(inputStream);
+            const metadata = await this.getMetadataFromFile(videoFilePath);
             this.logger.log(
                 VIDEOPROC_CONSTS.FFMPEG.LOGS.METADATA_EXTRACTION_SUCCESS,
             );
@@ -109,33 +130,26 @@ export class VideoProcessingService implements IVideoProcessing {
 
             const args = VIDEOPROC_CONSTS.FFMPEG.GET_DEFAULT_ARGS(start, end);
 
-            // Video
-            // x265 => codec_name = hevc
-            // x264 => codec_name = h264
-            switch (videoStream.codec_type) {
-                case "hevc":
+            this.logger.debug("videoStream.codec_name", videoStream.codec_name);
+            this.logger.debug("audioStream.codec_name", audioStream.codec_name);
+            switch (videoStream.codec_name) {
                 case "h264":
+                    args.push("-c:v", "copy");
+                    break;
+                case "hevc":
                     args.push("-c:v", "libx264");
                     break;
-
-                // maybe more codec_types for later?
-
                 default:
-                    args.push("-c:v", "copy");
+                    args.push("-c:v", "libx264");
                     break;
             }
 
-            // Audio
-            // aac => codec_name = aac
-            switch (audioStream.codec_type) {
+            switch (audioStream.codec_name) {
                 case "aac":
-                    args.push("-c:v", "copy");
+                    args.push("-c:a", "copy");
                     break;
-
-                // maybe more codec_types for later?
-
                 default:
-                    args.push("-c:v", "aac");
+                    args.push("-c:a", "aac");
                     break;
             }
 
@@ -154,22 +168,73 @@ export class VideoProcessingService implements IVideoProcessing {
         }
     }
 
-    // NOTE: I don't trust Readable used `NodeJS.ReadableStream` before
-    // change it if needed
-
     async convertVideo(
         inputStream: NodeJS.ReadableStream,
         startTimeMs: number,
         endTimeMs: number,
-    ): Promise<Readable> {
+    ): Promise<NodeJS.ReadableStream> {
+        this.logger.debug(
+            "Duplicating input stream for metadata and processing.",
+        );
+
+        const stream1 = new PassThrough();
+        const stream2 = new PassThrough();
+
+        inputStream.on("data", (chunk) => {
+            stream1.write(chunk);
+            stream2.write(chunk);
+        });
+
+        inputStream.on("end", () => {
+            stream1.end();
+            stream2.end();
+        });
+
+        inputStream.on("error", (err) => {
+            stream1.destroy(err);
+            stream2.destroy(err);
+        });
+
+        const tempVideoPath = join(
+            tmpdir(),
+            `video-${Date.now()}-${Math.random()}.tmp`,
+        );
+        this.logger.debug("Writing input stream to", tempVideoPath);
+
+        await new Promise<void>((resolve, reject) => {
+            const writeStream = createWriteStream(tempVideoPath);
+            stream1.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+        });
+
+        this.logger.debug("Finished writing input stream.");
+
         const ffmpegArgs = await this.buildConversionArgs(
-            inputStream,
+            tempVideoPath,
             startTimeMs,
             endTimeMs,
         );
 
         const ffmpegCmd = spawn("ffmpeg", ffmpegArgs);
-        inputStream.pipe(ffmpegCmd.stdin);
+
+        stream2.pipe(ffmpegCmd.stdin);
+
+        ffmpegCmd.on("close", async () => {
+            try {
+                await fsPromises.unlink(tempVideoPath);
+                this.logger.debug(
+                    "Deleted temporary video file:",
+                    tempVideoPath,
+                );
+            } catch (err) {
+                this.logger.error("Error deleting temp video file:", err);
+            }
+        });
+
+        ffmpegCmd.stderr.on("data", (data) => {
+            this.logger.debug("ffmpeg stderr:", data.toString());
+        });
 
         return ffmpegCmd.stdout;
     }

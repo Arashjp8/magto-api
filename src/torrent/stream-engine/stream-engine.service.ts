@@ -17,26 +17,29 @@ export class StreamEngineService implements IStreamEngine {
             this.engineClient.add(magnet, (torrent) => {
                 this.logger.log(ENGINE_CONSTS.LOGS.TORRENT_ADDED, magnet);
 
-                torrent.on("ready", () => {
-                    clearTimeout(timeout);
+                this.logger.debug("torrent is ready");
+                //clearTimeout(timeout);
 
-                    const file = torrent.files.find((file) => {
-                        return ENGINE_CONSTS.PLAYABLE.some((playable) => {
-                            return file.name.endsWith(`.${playable}`);
-                        });
+                this.logger.debug("before file");
+                const file = torrent.files.find((file) => {
+                    return ENGINE_CONSTS.PLAYABLE.some((playable) => {
+                        return file.name.endsWith(`.${playable}`);
                     });
+                });
+                this.logger.debug("file", file);
 
-                    if (file) {
-                        this.logger.log(
-                            ENGINE_CONSTS.LOGS.PLAYABLE_FILE_FOUND,
-                            file.name,
-                        );
-                        resolve(file);
-                    }
-
+                if (!file) {
                     this.logger.warn(ENGINE_CONSTS.LOGS.NO_PLAYABLE_FILE);
                     reject(null);
-                });
+                    throw new Error(ENGINE_CONSTS.LOGS.NO_PLAYABLE_FILE);
+                }
+
+                this.logger.log(
+                    ENGINE_CONSTS.LOGS.PLAYABLE_FILE_FOUND,
+                    file.name,
+                );
+                resolve(file);
+                this.logger.debug("after engine resolve");
 
                 torrent.on("error", (err) => {
                     this.engineClient.remove(torrent);
@@ -48,7 +51,7 @@ export class StreamEngineService implements IStreamEngine {
                     this.engineClient.remove(torrent);
                     this.logger.error(ENGINE_CONSTS.LOGS.METADATA_TIMEOUT);
                     reject(new Error(ENGINE_CONSTS.LOGS.TORRENT_ERROR));
-                }, 30_000);
+                }, 30000);
 
                 torrent.on("done", () => clearTimeout(timeout));
             });
@@ -64,6 +67,9 @@ export class StreamEngineService implements IStreamEngine {
         file: WebTorrent.TorrentFile,
         range?: { start: number; end: number },
     ): NodeJS.ReadableStream {
+        this.logger.debug("file", file);
+        this.logger.debug("range.start", range?.start);
+        this.logger.debug("range.end", range?.end);
         return file.createReadStream({
             start: range ? range.start : 0,
             end: range ? range.end : file.length - 1,

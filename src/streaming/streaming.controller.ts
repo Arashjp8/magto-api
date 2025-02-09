@@ -68,24 +68,33 @@ export class StreamingController {
             }
 
             const file = await this.streamEngine.findPlayableFile(magnet);
+            this.logger.debug("controller file:", file);
 
             const range = req.headers.range;
+            this.logger.debug("controller range:", range);
             const { start, end, contentLength } = this.parseRangeHeader(
                 range,
                 file.length,
             );
+            this.logger.debug("controller start:", start);
+            this.logger.debug("controller end:", end);
+            this.logger.debug("controller contentLength:", contentLength);
 
-            const initialStream = this.streamEngine.getStream(file);
+            const metadataStream = this.streamEngine.getStream(file);
             const metadata =
-                await this.videoProcessing.getMetadata(initialStream);
+                await this.videoProcessing.getMetadata(metadataStream);
+            this.logger.debug("controller metadata:", metadata);
             const durationMs = metadata.format.duration! * 1000;
+            this.logger.debug("controller durationMs:", durationMs);
 
             const { startTimeMs, endTimeMs } = this.calculateTimeRange(
                 start,
                 end,
-                contentLength,
+                file.length,
                 durationMs,
             );
+            this.logger.debug("controller startTimeMs:", startTimeMs);
+            this.logger.debug("controller endTimeMs:", endTimeMs);
 
             const processingStream = this.streamEngine.getStream(file);
 
@@ -98,7 +107,6 @@ export class StreamingController {
             res.writeHead(206, {
                 "Content-Range": `bytes ${start}-${end}/${file.length}`,
                 "Accept-Ranges": "bytes",
-                "Content-Length": contentLength,
                 "Content-Type": "video/mp4",
             });
 
