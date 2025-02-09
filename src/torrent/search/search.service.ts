@@ -6,9 +6,10 @@ import {
 } from "@nestjs/common";
 import TorrentSearchApi from "torrent-search-api";
 import { SEARCH_CONSTS } from "./search.constants.js";
+import { ISearchService } from "./search.interface.js";
 
 @Injectable()
-export class SearchService {
+export class SearchService implements ISearchService {
     private readonly logger = new Logger(SearchService.name);
 
     constructor() {
@@ -21,7 +22,11 @@ export class SearchService {
         });
     }
 
-    async findAll(movieName: string) {
+    async findAll(movieName: string): Promise<{
+        movieName: string;
+        torrents: TorrentSearchApi.Torrent[];
+        torrentsCount: number;
+    }> {
         try {
             const torrents = await TorrentSearchApi.search(
                 movieName,
