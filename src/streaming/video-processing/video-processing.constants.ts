@@ -2,12 +2,13 @@ export const VIDEOPROC_CONSTS = {
     FFPROBE: {
         DEFAULT_ARGS: [
             "-v",
-            "quiet",
+            //"quiet",
+            "error",
             "-print_format",
             "json",
             "-show_streams",
             "-show_format",
-        ],
+        ] as const,
 
         LOGS: {
             METADATA_EXTRACTION_SUCCESS:
@@ -26,11 +27,11 @@ export const VIDEOPROC_CONSTS = {
             "-ss",
             (start / 1000).toString(), // start time in seconds
             "-t",
-            ((end - start) / 1000).toString(), // duration in seconds
-            "-movflags",
-            "frag_keyframe+empty_moov+default_base_moof", // optimize for streaming
+            ((end - start + 1) / 1000).toString(), // duration in seconds
             "-preset",
             "ultrafast", // fast encoding
+            "-movflags",
+            "frag_keyframe+empty_moov+default_base_moof", // optimize for streaming
         ],
 
         LOGS: {

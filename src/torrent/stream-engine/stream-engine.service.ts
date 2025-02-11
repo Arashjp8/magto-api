@@ -10,15 +10,18 @@ export class StreamEngineService implements IStreamEngine {
     constructor(
         @Inject("WEBTORRENT_INSTANCE")
         private readonly engineClient: WebTorrent.Instance,
-    ) {}
+    ) { }
 
     findPlayableFile(magnet: string): Promise<WebTorrent.TorrentFile> {
         return new Promise((resolve, reject) => {
             this.engineClient.add(magnet, (torrent) => {
                 this.logger.log(ENGINE_CONSTS.LOGS.TORRENT_ADDED, magnet);
 
-                this.logger.debug("torrent is ready");
-                //clearTimeout(timeout);
+                const timeout = setTimeout(() => {
+                    this.engineClient.remove(torrent);
+                    this.logger.error(ENGINE_CONSTS.LOGS.METADATA_TIMEOUT);
+                    reject(new Error(ENGINE_CONSTS.LOGS.TORRENT_ERROR));
+                }, 30000);
 
                 this.logger.debug("before file");
                 const file = torrent.files.find((file) => {
@@ -34,6 +37,8 @@ export class StreamEngineService implements IStreamEngine {
                     throw new Error(ENGINE_CONSTS.LOGS.NO_PLAYABLE_FILE);
                 }
 
+                clearTimeout(timeout);
+
                 this.logger.log(
                     ENGINE_CONSTS.LOGS.PLAYABLE_FILE_FOUND,
                     file.name,
@@ -46,12 +51,6 @@ export class StreamEngineService implements IStreamEngine {
                     this.logger.error(ENGINE_CONSTS.LOGS.TORRENT_ERROR, err);
                     reject(err);
                 });
-
-                const timeout = setTimeout(() => {
-                    this.engineClient.remove(torrent);
-                    this.logger.error(ENGINE_CONSTS.LOGS.METADATA_TIMEOUT);
-                    reject(new Error(ENGINE_CONSTS.LOGS.TORRENT_ERROR));
-                }, 30000);
 
                 torrent.on("done", () => clearTimeout(timeout));
             });

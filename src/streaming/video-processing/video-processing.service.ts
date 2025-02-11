@@ -1,111 +1,114 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { spawn } from "child_process";
-import { createWriteStream, promises as fsPromises } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { ChildProcess, spawn } from "child_process";
+import { createWriteStream, existsSync, readFileSync, writeFileSync } from "fs";
+import { pipeline } from "stream";
+import { promisify } from "util";
 import { FFprobeData } from "./ffprobe.interface.js";
 import { VIDEOPROC_CONSTS } from "./video-processing.constants.js";
-import { IVideoProcessing } from "./video-processing.interface.js";
-import { PassThrough } from "stream";
 
 @Injectable()
-export class VideoProcessingService implements IVideoProcessing {
+export class VideoProcessingService {
     private readonly logger = new Logger(VideoProcessingService.name);
+    private readonly pipelineAsync = promisify(pipeline);
 
-    private async getMetadataFromFile(
-        videoFilePath: string,
+    async getMetadata(
+        inputStream: NodeJS.ReadableStream,
+        outputFilePath: string,
     ): Promise<FFprobeData> {
-        this.logger.debug("Running ffprobe on temporary file:", videoFilePath);
         return new Promise((resolve, reject) => {
+            this.logger.debug(
+                "Writing inputStream metadata to:",
+                outputFilePath,
+            );
+
+            const ffprobeArgs = VIDEOPROC_CONSTS.FFPROBE.DEFAULT_ARGS;
             const ffprobeCmd = spawn("ffprobe", [
-                ...VIDEOPROC_CONSTS.FFPROBE.DEFAULT_ARGS,
-                videoFilePath,
+                ...ffprobeArgs,
+                "-i",
+                "pipe:0",
             ]);
 
-            let metadataOutput = "";
-            ffprobeCmd.stdout.on("data", (data) => {
-                metadataOutput += data.toString();
-                this.logger.debug("ffprobe stdout data:", data.toString());
-            });
-
-            ffprobeCmd.stderr.on("data", (data) => {
-                this.logger.error(
-                    VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_STDERR,
-                    data.toString(),
+            if (!existsSync(outputFilePath)) {
+                this.logger.debug(
+                    `File ${outputFilePath} does not exist, creating it.`,
                 );
-                reject(new Error(`ffprobe error: ${data.toString()}`));
-            });
+                writeFileSync(outputFilePath, "{}");
+            }
 
-            ffprobeCmd.on("close", async (code: number) => {
-                if (code === 0) {
+            const outputStream = createWriteStream(outputFilePath);
+            let ffprobeExited = false;
+
+            try {
+                pipeline(inputStream, ffprobeCmd.stdin, (err) => {
+                    if (err && !ffprobeExited) {
+                        this.logger.error(
+                            "Error piping input to ffprobe:",
+                            err,
+                        );
+                        //reject(err);
+                    }
+                });
+
+                pipeline(ffprobeCmd.stdout, outputStream, (err) => {
+                    if (err) {
+                        this.logger.error("Error writing ffprobe output:", err);
+                        reject(err);
+                    }
+                });
+
+                ffprobeCmd.stderr.on("data", (data) => {
+                    this.logger.error(`FFprobe stderr: ${data.toString()}`);
+                });
+
+                ffprobeCmd.on("error", (err) => {
+                    this.logger.error("FFprobe process error:", err);
+                    reject(err);
+                });
+
+                ffprobeCmd.on("close", (code) => {
+                    ffprobeExited = true;
+
+                    if (code !== 0) {
+                        this.logger.error(`FFprobe exited with code ${code}`);
+                        reject(new Error(`FFprobe exited with code ${code}`));
+                        return;
+                    }
+
+                    this.logger.log("FFprobe stream ended.");
+
+                    // Properly close inputStream to avoid EPIPE
+                    if (typeof inputStream.unpipe === "function") {
+                        inputStream.unpipe();
+                    }
+                    if (typeof inputStream.pause === "function") {
+                        inputStream.pause();
+                    }
+
                     try {
                         const metadata = JSON.parse(
-                            metadataOutput,
-                        ) as FFprobeData;
-                        this.logger.log(
-                            VIDEOPROC_CONSTS.FFPROBE.LOGS
-                                .METADATA_EXTRACTION_SUCCESS,
+                            readFileSync(outputFilePath, "utf-8"),
                         );
                         resolve(metadata);
-                    } catch (error) {
-                        this.logger.error(
-                            VIDEOPROC_CONSTS.FFPROBE.LOGS
-                                .METADATA_PARSING_ERROR,
-                            error,
-                        );
-                        reject(
-                            new Error(
-                                VIDEOPROC_CONSTS.FFPROBE.LOGS.METADATA_PARSING_ERROR,
-                            ),
-                        );
+                    } catch (err) {
+                        this.logger.error("Error parsing metadata:", err);
+                        reject(err);
                     }
-                } else {
-                    const errorMsg =
-                        VIDEOPROC_CONSTS.FFPROBE.LOGS.FFPROBE_EXIT_ERROR(code);
-                    this.logger.error(errorMsg);
-                    reject(new Error(errorMsg));
-                }
-            });
+                });
+            } catch (err) {
+                this.logger.error("Unexpected error in getMetadata:", err);
+                reject(err);
+            }
         });
-    }
-
-    public async getMetadata(
-        inputStream: NodeJS.ReadableStream,
-    ): Promise<FFprobeData> {
-        const tempVideoPath = join(
-            tmpdir(),
-            `video-${Date.now()}-${Math.random()}.tmp`,
-        );
-        this.logger.debug(
-            "Writing input stream for metadata extraction to",
-            tempVideoPath,
-        );
-        await new Promise<void>((resolve, reject) => {
-            const writeStream = createWriteStream(tempVideoPath);
-            inputStream.pipe(writeStream);
-            writeStream.on("finish", resolve);
-            writeStream.on("error", reject);
-        });
-        const metadata = await this.getMetadataFromFile(tempVideoPath);
-        await fsPromises.unlink(tempVideoPath);
-        return metadata;
     }
 
     async buildConversionArgs(
-        videoFilePath: string,
+        metadata: FFprobeData,
         start: number,
         end: number,
     ): Promise<string[]> {
-        this.logger.log(
-            VIDEOPROC_CONSTS.FFMPEG.LOGS.METADATA_EXTRACTION_STARTED,
-        );
+        this.logger.log("generating ffmpeg args started.");
 
         try {
-            const metadata = await this.getMetadataFromFile(videoFilePath);
-            this.logger.log(
-                VIDEOPROC_CONSTS.FFMPEG.LOGS.METADATA_EXTRACTION_SUCCESS,
-            );
-
             this.logger.log(
                 VIDEOPROC_CONSTS.FFMPEG.LOGS.STREAM_SELECTION_STARTED,
             );
@@ -127,11 +130,11 @@ export class VideoProcessingService implements IVideoProcessing {
             this.logger.log(
                 VIDEOPROC_CONSTS.FFMPEG.LOGS.STREAM_SELECTION_SUCCESS,
             );
+            this.logger.debug("videoStream.codec_name", videoStream.codec_name);
+            this.logger.debug("audioStream.codec_name", audioStream.codec_name);
 
             const args = VIDEOPROC_CONSTS.FFMPEG.GET_DEFAULT_ARGS(start, end);
 
-            this.logger.debug("videoStream.codec_name", videoStream.codec_name);
-            this.logger.debug("audioStream.codec_name", audioStream.codec_name);
             switch (videoStream.codec_name) {
                 case "h264":
                     args.push("-c:v", "copy");
@@ -158,6 +161,7 @@ export class VideoProcessingService implements IVideoProcessing {
             this.logger.log(
                 VIDEOPROC_CONSTS.FFMPEG.LOGS.ARGS_GENERATION_SUCCESS(args),
             );
+
             return args;
         } catch (error) {
             this.logger.error(
@@ -170,72 +174,36 @@ export class VideoProcessingService implements IVideoProcessing {
 
     async convertVideo(
         inputStream: NodeJS.ReadableStream,
+        metadata: FFprobeData,
         startTimeMs: number,
         endTimeMs: number,
-    ): Promise<NodeJS.ReadableStream> {
-        this.logger.debug(
-            "Duplicating input stream for metadata and processing.",
-        );
-
-        const stream1 = new PassThrough();
-        const stream2 = new PassThrough();
-
-        inputStream.on("data", (chunk) => {
-            stream1.write(chunk);
-            stream2.write(chunk);
-        });
-
-        inputStream.on("end", () => {
-            stream1.end();
-            stream2.end();
-        });
-
-        inputStream.on("error", (err) => {
-            stream1.destroy(err);
-            stream2.destroy(err);
-        });
-
-        const tempVideoPath = join(
-            tmpdir(),
-            `video-${Date.now()}-${Math.random()}.tmp`,
-        );
-        this.logger.debug("Writing input stream to", tempVideoPath);
-
-        await new Promise<void>((resolve, reject) => {
-            const writeStream = createWriteStream(tempVideoPath);
-            stream1.pipe(writeStream);
-            writeStream.on("finish", resolve);
-            writeStream.on("error", reject);
-        });
-
-        this.logger.debug("Finished writing input stream.");
-
+    ): Promise<{ stream: NodeJS.ReadableStream; process: ChildProcess }> {
         const ffmpegArgs = await this.buildConversionArgs(
-            tempVideoPath,
+            metadata,
             startTimeMs,
             endTimeMs,
         );
 
-        const ffmpegCmd = spawn("ffmpeg", ffmpegArgs);
+        return new Promise((resolve, reject) => {
+            const ffmpegCmd = spawn("ffmpeg", ffmpegArgs);
 
-        stream2.pipe(ffmpegCmd.stdin);
+            ffmpegCmd.on("error", (err) => {
+                this.logger.error("FFmpeg Error:", err);
+                reject(err);
+            });
 
-        ffmpegCmd.on("close", async () => {
-            try {
-                await fsPromises.unlink(tempVideoPath);
-                this.logger.debug(
-                    "Deleted temporary video file:",
-                    tempVideoPath,
-                );
-            } catch (err) {
-                this.logger.error("Error deleting temp video file:", err);
-            }
+            ffmpegCmd.stderr.on("data", (data) => {
+                this.logger.debug("FFmpeg stderr:", data);
+            });
+
+            this.pipelineAsync(inputStream, ffmpegCmd.stdin)
+                .then(() => this.logger.debug("Input stream piped to ffmpeg"))
+                .catch((err) => {
+                    this.logger.error("Pipeline to ffmpeg stdin failed:", err);
+                    reject(err);
+                });
+
+            resolve({ stream: ffmpegCmd.stdout, process: ffmpegCmd });
         });
-
-        ffmpegCmd.stderr.on("data", (data) => {
-            this.logger.debug("ffmpeg stderr:", data.toString());
-        });
-
-        return ffmpegCmd.stdout;
     }
 }

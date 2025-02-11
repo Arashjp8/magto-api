@@ -8,21 +8,25 @@ export interface IVideoProcessing {
      * This approach ensures that metadata can be extracted even from streaming sources.
      *
      * @param inputStream - The video stream to analyze.
+     * @param filePath - The file path for saving metadata.
      * @returns A promise that resolves with the parsed FFprobeData metadata.
      */
-    getMetadata(inputStream: NodeJS.ReadableStream): Promise<FFprobeData>;
+    getMetadata(
+        inputStream: NodeJS.ReadableStream,
+        outputFilePath: string,
+    ): Promise<FFprobeData>;
 
     /**
      * Generates a list of FFmpeg arguments to convert a video file,
      * selecting the appropriate video and audio codecs based on the file's metadata.
      *
-     * @param videoFilePath - The path to the temporary video file.
+     * @param metadata - The metadata extracted from ffprobe.
      * @param start - The start time of the desired segment in milliseconds.
      * @param end - The end time of the desired segment in milliseconds.
      * @returns A promise that resolves with an array of FFmpeg arguments.
      */
     buildConversionArgs(
-        videoFilePath: string,
+        metadata: FFprobeData,
         start: number,
         end: number,
     ): Promise<string[]>;
@@ -40,6 +44,7 @@ export interface IVideoProcessing {
      */
     convertVideo(
         inputStream: NodeJS.ReadableStream,
+        metadata: FFprobeData,
         startTimeMs: number,
         endTimeMs: number,
     ): Promise<NodeJS.ReadableStream>;
