@@ -31,7 +31,7 @@ export class SearchService implements ISearchService {
             const torrents = await TorrentSearchApi.search(
                 movieName,
                 "Video",
-                20,
+                100,
             );
 
             if (!torrents || torrents[0].title === "No results returned") {

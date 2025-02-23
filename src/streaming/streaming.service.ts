@@ -13,7 +13,7 @@ export class StreamingService {
     constructor(
         private readonly streamEngine: StreamEngineService,
         private readonly videoProcessing: VideoProcessingService,
-    ) {}
+    ) { }
 
     private parseRangeHeader(range: string | undefined, fileSize: number) {
         if (!range) {
@@ -56,10 +56,8 @@ export class StreamingService {
         }
 
         const file = await this.streamEngine.findPlayableFile(magnet);
-        this.logger.debug("streaming file:", file);
 
         const range = req.headers.range;
-        this.logger.debug("streaming range:", range);
 
         const { start, end, contentLength } = this.parseRangeHeader(
             range,

@@ -5,12 +5,15 @@ import { pipeline } from "stream";
 import { promisify } from "util";
 import { FFprobeData } from "./ffprobe.interface.js";
 import { VIDEOPROC_CONSTS } from "./video-processing.constants.js";
+import { IVideoProcessing } from "./video-processing.interface.js";
 
 @Injectable()
-export class VideoProcessingService {
+export class VideoProcessingService implements IVideoProcessing {
     private readonly logger = new Logger(VideoProcessingService.name);
     private readonly pipelineAsync = promisify(pipeline);
 
+    // WARNING: storing data in the disk is a bottle-neck
+    // use memory instead
     async getMetadata(
         inputStream: NodeJS.ReadableStream,
         outputFilePath: string,
@@ -138,9 +141,6 @@ export class VideoProcessingService {
             switch (videoStream.codec_name) {
                 case "h264":
                     args.push("-c:v", "copy");
-                    break;
-                case "hevc":
-                    args.push("-c:v", "libx264");
                     break;
                 default:
                     args.push("-c:v", "libx264");

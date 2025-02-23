@@ -1,15 +1,14 @@
 import { FFprobeData } from "./ffprobe.interface.js";
+import { ChildProcess } from "child_process";
 
 export interface IVideoProcessing {
     /**
-     * Extracts metadata from a video stream by first writing it to a temporary file
-     * and then analyzing it using FFprobe.
-     *
-     * This approach ensures that metadata can be extracted even from streaming sources.
+     * Extracts metadata from a video stream using FFprobe.
+     * The metadata is saved to a specified file before being read and parsed.
      *
      * @param inputStream - The video stream to analyze.
-     * @param filePath - The file path for saving metadata.
-     * @returns A promise that resolves with the parsed FFprobeData metadata.
+     * @param outputFilePath - The file path for storing metadata.
+     * @returns A promise that resolves with the parsed FFprobeData.
      */
     getMetadata(
         inputStream: NodeJS.ReadableStream,
@@ -17,12 +16,13 @@ export interface IVideoProcessing {
     ): Promise<FFprobeData>;
 
     /**
-     * Generates a list of FFmpeg arguments to convert a video file,
-     * selecting the appropriate video and audio codecs based on the file's metadata.
+     * Generates a list of FFmpeg arguments for video conversion.
+     * It selects the appropriate video and audio codecs based on metadata and
+     * applies a time range for the output segment.
      *
-     * @param metadata - The metadata extracted from ffprobe.
-     * @param start - The start time of the desired segment in milliseconds.
-     * @param end - The end time of the desired segment in milliseconds.
+     * @param metadata - The metadata extracted from FFprobe.
+     * @param start - The start time of the segment in milliseconds.
+     * @param end - The end time of the segment in milliseconds.
      * @returns A promise that resolves with an array of FFmpeg arguments.
      */
     buildConversionArgs(
@@ -34,18 +34,20 @@ export interface IVideoProcessing {
     /**
      * Converts a video stream into a processed output stream using FFmpeg.
      *
-     * The input stream is duplicated so that one copy is written to a temporary file
-     * for metadata extraction, while the other is directly piped into FFmpeg for processing.
+     * The method executes FFmpeg as a child process, passing the generated arguments
+     * and piping the input stream for processing. The resulting output stream is
+     * returned along with the process reference.
      *
-     * @param inputStream - The raw input video stream.
+     * @param inputStream - The input video stream.
+     * @param metadata - The extracted metadata used for processing.
      * @param startTimeMs - The start time of the segment in milliseconds.
      * @param endTimeMs - The end time of the segment in milliseconds.
-     * @returns A promise that resolves with the processed (converted) video stream.
+     * @returns A promise resolving with an object containing the processed video stream and the FFmpeg process.
      */
     convertVideo(
         inputStream: NodeJS.ReadableStream,
         metadata: FFprobeData,
         startTimeMs: number,
         endTimeMs: number,
-    ): Promise<NodeJS.ReadableStream>;
+    ): Promise<{ stream: NodeJS.ReadableStream; process: ChildProcess }>;
 }
