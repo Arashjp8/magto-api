@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ChildProcess, spawn } from "child_process";
-import { createWriteStream, existsSync, readFileSync, writeFileSync } from "fs";
 import { pipeline } from "stream";
 import { promisify } from "util";
 import { FFprobeData } from "./ffprobe.interface.js";
@@ -12,17 +11,11 @@ export class VideoProcessingService implements IVideoProcessing {
     private readonly logger = new Logger(VideoProcessingService.name);
     private readonly pipelineAsync = promisify(pipeline);
 
-    // WARNING: storing data in the disk is a bottle-neck
-    // use memory instead
     async getMetadata(
         inputStream: NodeJS.ReadableStream,
-        outputFilePath: string,
     ): Promise<FFprobeData> {
         return new Promise((resolve, reject) => {
-            this.logger.debug(
-                "Writing inputStream metadata to:",
-                outputFilePath,
-            );
+            this.logger.debug("Getting metadata from inputStream");
 
             const ffprobeArgs = VIDEOPROC_CONSTS.FFPROBE.DEFAULT_ARGS;
             const ffprobeCmd = spawn("ffprobe", [
@@ -31,32 +24,24 @@ export class VideoProcessingService implements IVideoProcessing {
                 "pipe:0",
             ]);
 
-            if (!existsSync(outputFilePath)) {
-                this.logger.debug(
-                    `File ${outputFilePath} does not exist, creating it.`,
-                );
-                writeFileSync(outputFilePath, "{}");
-            }
-
-            const outputStream = createWriteStream(outputFilePath);
+            let metadata = "";
             let ffprobeExited = false;
 
             try {
-                pipeline(inputStream, ffprobeCmd.stdin, (err) => {
-                    if (err && !ffprobeExited) {
-                        this.logger.error(
-                            "Error piping input to ffprobe:",
-                            err,
-                        );
-                        //reject(err);
-                    }
-                });
+                this.pipelineAsync(inputStream, ffprobeCmd.stdin).catch(
+                    (err) => {
+                        if (!ffprobeExited) {
+                            this.logger.error(
+                                "Error piping input to ffprobe:",
+                                err,
+                            );
+                            reject(err);
+                        }
+                    },
+                );
 
-                pipeline(ffprobeCmd.stdout, outputStream, (err) => {
-                    if (err) {
-                        this.logger.error("Error writing ffprobe output:", err);
-                        reject(err);
-                    }
+                ffprobeCmd.stdout.on("data", (chunk) => {
+                    metadata += chunk.toString();
                 });
 
                 ffprobeCmd.stderr.on("data", (data) => {
@@ -79,7 +64,7 @@ export class VideoProcessingService implements IVideoProcessing {
 
                     this.logger.log("FFprobe stream ended.");
 
-                    // Properly close inputStream to avoid EPIPE
+                    // properly close inputStream to avoid EPIPE
                     if (typeof inputStream.unpipe === "function") {
                         inputStream.unpipe();
                     }
@@ -88,10 +73,8 @@ export class VideoProcessingService implements IVideoProcessing {
                     }
 
                     try {
-                        const metadata = JSON.parse(
-                            readFileSync(outputFilePath, "utf-8"),
-                        );
-                        resolve(metadata);
+                        const parsedMetadata = JSON.parse(metadata);
+                        resolve(parsedMetadata);
                     } catch (err) {
                         this.logger.error("Error parsing metadata:", err);
                         reject(err);

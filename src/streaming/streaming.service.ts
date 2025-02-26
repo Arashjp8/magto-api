@@ -1,7 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Request, Response } from "express";
-import { tmpdir } from "os";
-import { join } from "path";
 import { pipeline } from "stream";
 import { StreamEngineService } from "../torrent/stream-engine/stream-engine.service.js";
 import { VideoProcessingService } from "./video-processing/video-processing.service.js";
@@ -13,7 +11,7 @@ export class StreamingService {
     constructor(
         private readonly streamEngine: StreamEngineService,
         private readonly videoProcessing: VideoProcessingService,
-    ) { }
+    ) {}
 
     private parseRangeHeader(range: string | undefined, fileSize: number) {
         if (!range) {
@@ -73,15 +71,7 @@ export class StreamingService {
 
         const metadataStream = this.streamEngine.getStream(file);
 
-        const baseMetadataFilePath = join(
-            tmpdir(),
-            `video-${Date.now()}-${Math.random()}.tmp.metadata.json`,
-        );
-
-        const metadata = await this.videoProcessing.getMetadata(
-            metadataStream,
-            baseMetadataFilePath,
-        );
+        const metadata = await this.videoProcessing.getMetadata(metadataStream);
 
         const durationMs = metadata.format.duration! * 1000;
 
